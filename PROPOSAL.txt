@@ -1,0 +1,36 @@
+Topic: CUDA-Accelerated Ray-Tracing Engine
+Team members:
+Julia Wang, Sahil Pandit, Akul Jindal, Abhishek Kakolla, Ryan Nene
+
+Project category: 
+Research, Implement, Evaluate
+Full Application Parallelization
+
+Introduction:
+Our project aims to develop a simplified game engine using ray-tracing in order to compare the performance of a baseline, CPU-based serial implementation to progressively more parallelized implementations of the engine. We ultimately aim to deliver an engine that will be capable of rendering objects with materials in a given scene using raytracing performed in parallel.
+	In comparison to other rendering methods such as ray casting and standard rasterization, ray tracing is a far less trivial rendering method. Ray casting and standard rasterization both involve projection through the use of casted rays to project faces and vertices onto the screen. Their respective algorithms allow for heavy parallelism. The latter involves using ray-based projections to rasterized pixels on the screen, then the use of an edge function to decide the rendering of polygons in the scene. Computing the conditions for these edge functions can be done in parallel, and a separate process can be spawned for each polygon or ray as they are independent. For the former, we do not simulate bounces and can hence very easily parallelize along the number of rays. Ray tracing, on the other hand, involves some (potentially) unavoidable serial component in simulating reflections and refractions over numerous bounces. As a result, ray tracing is far more computationally expensive and less trivial to parallelize, however the major benefit is that scenes can be more accurately rendered and that the logic behind raytraced rendering can naturally be extended to implement features like realistic lighting and more intuitively handle aspects of a scene such as occlusion.
+We predict that the CUDA-based implementation will have the fastest rendering time due to the numerous CUDA cores available (i.e 6,144 CUDA cores on the 3070 ti) compared to the serial based CPU implementation. In general, we predict that rendering time for a given scene should decrease, at worst, sublinearly with respect to the extent of the parallelization in a given implementation–e.g. OpenMP + CUDA < OpenMP < CPU–however what is left to be seen is when, or whether at all, there is a point at which the speedup becomes marginal enough that it’s arguably not worth the cost (e.g. in terms of hardware requirements, hardware support, power consumption, etc.) in general use cases.
+
+Description:
+	For our implementation, we primarily target parallelization across rays, giving each thread ownership over one ray. We thus avoid shared memory and necessary concurrency. Each thread can then be spawned into its own thread in a CUDA thread block to compute the trace of a ray. Once all threads complete their results, we barrier and reduce back to the final image. Cache optimizations will largely come ad-hoc, so it is difficult to anticipate the specific design.
+	The engine will first be implemented serially using C++ and OpenGL. The CPU version will be parallelized using OpenMP for thread-level parallelization and accelerated further using CUDA; therefore, supporting computers with NVIDIA GPUs. The engine will be benchmarked incrementally according to the evaluation metrics (see below) between different levels of parallelism, i.e. serial CPU rendering, parallelized ray tracing using OpenMP, and GPU-accelerated implementation using CUDA. Throughout the process, we plan to apply concepts covered in lectures on cache optimization, SMPM, and OpenMP programming to optimize temporal and spatial locality.
+Due to time limitations, the functionalities of our engine will not support extraneous features like full player input and controls, collision detection, physics, level design, and other functionalities oftentimes provided in standard game engines like Unreal Engine and other proprietary engines.
+
+Evaluation: 
+	In our project we don’t intend to use any datasets per se, as our project is focused on implementation and relative performance evaluation, however we intend to standardize our performance benchmarks by using standardized benchmark scenes frequently used in computer graphics to evaluate the accuracy of rendering algorithms, such as the Cornell Box.
+	In terms of our evaluation metrics, we plan on measuring factors like rendering time, total power consumption, power consumption per ray, memory usage, and additional hardware metrics, etc. By using these metrics, we can compare the benefits and drawbacks of each implementation and see not only how things like performance (i.e. render time) scale, but what the relative cost of each implementation is and in what cases the tradeoffs are or are not worth it.
+
+We aim to have the following deliverables:
+Parallelized Script – Ray tracer implemented with OpenMP and CUDA for rendering
+CUDA functions to handle individual ray process
+C++ script for spawning rays in scene and calling CUDA interface
+Serial Script – Ray tracer using serial C++ to render scene
+Makefile
+OpenGL image/screen rendering
+Small scene system
+Camera
+Shaders & simple textures
+
+References:
+Ray tracing in one weekend
+Writing a Ray tracer using CUDA

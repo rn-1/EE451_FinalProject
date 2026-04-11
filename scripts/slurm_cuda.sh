@@ -1,0 +1,50 @@
+#!/bin/bash
+#SBATCH --job-name=rt_cuda
+#SBATCH --account=ee451_grp          # UPDATE: your project allocation
+#SBATCH --partition=gpu              # GPU partition — check CARC docs for correct name
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --gres=gpu:1
+#SBATCH --mem=16G
+#SBATCH --time=02:00:00
+#SBATCH --output=results/slurm_%j_cuda.out
+#SBATCH --error=results/slurm_%j_cuda.err
+
+module purge
+module load gcc/13.3.0
+module load cuda/12.6.3
+
+cd "$SLURM_SUBMIT_DIR"
+mkdir -p output results
+
+BINARY=./bin/cuda_rt
+RESULTS=results/timings.csv
+
+if [ ! -f "$RESULTS" ]; then
+    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,gpu_name" > "$RESULTS"
+fi
+
+DEPTH=50
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1 | tr ' ' '_')
+echo "GPU: $GPU_NAME"
+
+for SCENE in random cornell; do
+    for DIMS in "400 225" "800 450" "1920 1080"; do
+        W=$(echo $DIMS | cut -d' ' -f1)
+        H=$(echo $DIMS | cut -d' ' -f2)
+        for SPP in 10 50 100 500; do
+            OUTFILE=output/cuda_${SCENE}_${W}x${H}_spp${SPP}.ppm
+            echo "Running: cuda scene=$SCENE res=${W}x${H} spp=$SPP ..."
+            # cuda_rt --timing-only prints: kernel_ms<TAB>total_ms
+            TIMING=$($BINARY --scene $SCENE --width $W --spp $SPP \
+                             --depth $DEPTH --output $OUTFILE --timing-only)
+            KERNEL_MS=$(echo "$TIMING" | cut -f1)
+            TOTAL_MS=$(echo "$TIMING"  | cut -f2)
+            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$GPU_NAME" >> "$RESULTS"
+            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms"
+        done
+    done
+done
+
+echo "CUDA benchmark complete."
