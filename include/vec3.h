@@ -34,6 +34,10 @@ public:
         e[0] *= t; e[1] *= t; e[2] *= t;
         return *this;
     }
+    HD vec3& operator*=(const vec3& v) {
+        e[0] *= v.e[0]; e[1] *= v.e[1]; e[2] *= v.e[2];
+        return *this;
+    }
     HD vec3& operator/=(float t) { return *this *= (1.f / t); }
 
     HD float length_squared() const {
@@ -92,34 +96,34 @@ HD inline vec3 refract(const vec3& uv, const vec3& n, float etai_over_etat) {
 
 #ifdef __CUDACC__
 // CUDA path: use cuRAND
-HD inline float rand_float(curandState* rs) {
+__device__ inline float rand_float(curandState* rs) {
     return curand_uniform(rs);
 }
-HD inline float rand_float(curandState* rs, float lo, float hi) {
+__device__ inline float rand_float(curandState* rs, float lo, float hi) {
     return lo + (hi - lo) * curand_uniform(rs);
 }
-HD inline vec3 random_vec(curandState* rs) {
+__device__ inline vec3 random_vec(curandState* rs) {
     return vec3(curand_uniform(rs), curand_uniform(rs), curand_uniform(rs));
 }
-HD inline vec3 random_vec(curandState* rs, float lo, float hi) {
+__device__ inline vec3 random_vec(curandState* rs, float lo, float hi) {
     return vec3(rand_float(rs, lo, hi),
                 rand_float(rs, lo, hi),
                 rand_float(rs, lo, hi));
 }
-HD inline vec3 random_in_unit_sphere(curandState* rs) {
+__device__ inline vec3 random_in_unit_sphere(curandState* rs) {
     while (true) {
         vec3 p = random_vec(rs, -1.f, 1.f);
         if (p.length_squared() < 1.f) return p;
     }
 }
-HD inline vec3 random_unit_vector(curandState* rs) {
+__device__ inline vec3 random_unit_vector(curandState* rs) {
     return unit_vector(random_in_unit_sphere(rs));
 }
-HD inline vec3 random_on_hemisphere(const vec3& normal, curandState* rs) {
+__device__ inline vec3 random_on_hemisphere(const vec3& normal, curandState* rs) {
     vec3 v = random_unit_vector(rs);
     return (dot(v, normal) > 0.f) ? v : -v;
 }
-HD inline vec3 random_in_unit_disk(curandState* rs) {
+__device__ inline vec3 random_in_unit_disk(curandState* rs) {
     while (true) {
         vec3 p(rand_float(rs, -1.f, 1.f), rand_float(rs, -1.f, 1.f), 0.f);
         if (p.length_squared() < 1.f) return p;

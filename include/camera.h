@@ -2,12 +2,15 @@
 
 #include "ray.h"
 #include "hittable.h"
-#include "material.h"
 #include "interval.h"
 #include "utils.h"
-#include <vector>
 #include <cmath>
+
+#ifndef __CUDACC__
+#include "material.h"
+#include <vector>
 #include <random>
+#endif
 
 // Camera parameters — plain-old-data so it can be copied to GPU
 struct CameraParams {
@@ -63,6 +66,7 @@ struct CameraParams {
     }
 };
 
+#ifndef __CUDACC__
 // ---- CPU-side ray generation & render ----
 
 inline ray get_ray(const CameraParams& cam, int col, int row,
@@ -133,3 +137,4 @@ inline void render(const CameraParams& cam, const Hittable& world,
         }
     }
 }
+#endif // !__CUDACC__

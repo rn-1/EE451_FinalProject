@@ -13,11 +13,14 @@ OMPFLAGS  = $(CXXFLAGS) -fopenmp
 #   sm_61 = P100, sm_70 = V100, sm_80 = A100, sm_86 = A40/RTX3xxx
 # -rdc=true (relocatable device code) is REQUIRED for device virtual functions
 # spanning multiple translation units (DeviceSphere/DeviceQuad vtables).
-NVCCFLAGS = -O3 -std=c++17 -Iinclude -rdc=true \
-            --generate-code arch=compute_61,code=sm_61 \
-            --generate-code arch=compute_70,code=sm_70 \
-            --generate-code arch=compute_80,code=sm_80 \
-            --generate-code arch=compute_86,code=sm_86
+# NVCCFLAGS = -O3 -std=c++17 -Iinclude -rdc=true \
+#             --generate-code arch=compute_61,code=sm_61 \
+#             --generate-code arch=compute_70,code=sm_70 \
+#             --generate-code arch=compute_80,code=sm_80 \
+#             --generate-code arch=compute_86,code=sm_86
+#
+#
+NVCCFLAGS = -O3 -std=c++17 -Iinclude -rdc=true --generate-code arch=compute_86,code=sm_86
 
 LDCUDA    = -lcurand
 
@@ -27,7 +30,7 @@ OUTDIR    = output
 # Source files
 SERIAL_SRC   = src/serial/main.cpp
 OPENMP_SRC   = src/openmp/main.cpp
-CUDA_SRCS    = src/cuda/main.cpp \
+CUDA_SRCS    = src/cuda/main.cu \
                src/cuda/render.cu \
                src/cuda/device_scene.cu
 
@@ -72,7 +75,7 @@ test-openmp: openmp
 	@echo "Output: $(OUTDIR)/test_openmp.ppm"
 
 test-cuda: cuda
-	./$(BINDIR)/cuda_rt --scene random --width 200 --spp 10 --depth 10 \
+	./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 500 --depth 10 \
 	                    --output $(OUTDIR)/test_cuda.ppm
 	@echo "Output: $(OUTDIR)/test_cuda.ppm"
 
