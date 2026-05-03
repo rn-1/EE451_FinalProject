@@ -263,3 +263,54 @@ void cuda_render(const CameraParams& cam,
     if (total_ms_out)  *total_ms_out  = total_ms;
     if (total_ray_count_out) *total_ray_count_out = total_ray_count;
 }
+
+// ============================================================
+//  Real-time support: persistent state + per-frame kernel
+// ============================================================
+
+__global__ void kernel_to_rgba(const color* fb, uchar4* rgba, int W, int H) {
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    if (col >= W || row >= H) return;
+    int idx = row * W + col;
+    color c = fb[idx];
+    rgba[idx] = make_uchar4(
+        (unsigned char)(255.999f * sqrtf(fminf(1.f, fmaxf(0.f, c.x())))),
+        (unsigned char)(255.999f * sqrtf(fminf(1.f, fmaxf(0.f, c.y())))),
+        (unsigned char)(255.999f * sqrtf(fminf(1.f, fmaxf(0.f, c.z())))),
+        255u
+    );
+}
+
+void cuda_render_init(RenderState& rs, int width, int height) {
+    rs.width  = width;
+    rs.height = height;
+    int N = width * height;
+    cudaMalloc(&rs.d_fb,     N * sizeof(color));
+    cudaMalloc(&rs.d_rgba,   N * sizeof(uchar4));
+    cudaMalloc(&rs.d_states, N * sizeof(curandState));
+
+    dim3 block(TILE_W, TILE_H);
+    dim3 grid((width + TILE_W-1)/TILE_W, (height + TILE_H-1)/TILE_H);
+    kernel_init_curand<<<grid, block>>>(rs.d_states, width, height, 42ULL);
+    cudaDeviceSynchronize();
+}
+
+void cuda_render_frame_rt(RenderState& rs, const CameraParams& cam,
+                           const DeviceScene& scene) {
+    int W = rs.width, H = rs.height;
+    dim3 block(TILE_W, TILE_H);
+    dim3 grid((W + TILE_W-1)/TILE_W, (H + TILE_H-1)/TILE_H);
+    kernel_render<<<grid, block>>>(rs.d_states, cam, scene, rs.d_fb, W, H);
+    kernel_to_rgba<<<grid, block>>>(rs.d_fb, rs.d_rgba, W, H);
+    cudaDeviceSynchronize();
+}
+
+void cuda_render_cleanup(RenderState& rs) {
+    cudaFree(rs.d_fb);
+    cudaFree(rs.d_rgba);
+    cudaFree(rs.d_states);
+    rs.d_fb     = nullptr;
+    rs.d_rgba   = nullptr;
+    rs.d_states = nullptr;
+}
