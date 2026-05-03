@@ -23,6 +23,7 @@ OMPFLAGS  = $(CXXFLAGS) -fopenmp
 NVCCFLAGS = -O3 -std=c++17 -Iinclude -rdc=true --generate-code arch=compute_86,code=sm_86
 
 LDCUDA    = -lcurand
+LDGL      = -lglfw -lGL
 
 BINDIR    = bin
 OUTDIR    = output
@@ -30,15 +31,18 @@ OUTDIR    = output
 # Source files
 SERIAL_SRC   = src/serial/main.cpp
 OPENMP_SRC   = src/openmp/main.cpp
-CUDA_SRCS    = src/cuda/main.cu \
-               src/cuda/render.cu \
-               src/cuda/device_scene.cu
+CUDA_SRCS     = src/cuda/main.cu \
+                src/cuda/render.cu \
+                src/cuda/device_scene.cu
+REALTIME_SRCS = src/cuda/main_realtime.cu \
+                src/cuda/render.cu \
+                src/cuda/device_scene.cu
 
 # Headers (used as dependencies)
 HEADERS = $(wildcard include/*.h) $(wildcard scenes/*.h) \
           src/cuda/render.cuh src/cuda/device_scene.cuh
 
-.PHONY: all serial openmp cuda clean
+.PHONY: all serial openmp cuda realtime clean
 
 all: serial openmp cuda
 
@@ -60,6 +64,12 @@ $(BINDIR)/cuda_rt: $(CUDA_SRCS) $(HEADERS)
 	$(NVCC) $(NVCCFLAGS) $(LDCUDA) -o $@ $(CUDA_SRCS)
 	@echo "Built: $@"
 
+realtime: $(BINDIR)/realtime_rt
+$(BINDIR)/realtime_rt: $(REALTIME_SRCS) $(HEADERS)
+	@mkdir -p $(BINDIR) $(OUTDIR)
+	$(NVCC) $(NVCCFLAGS) $(LDCUDA) $(LDGL) -o $@ $(REALTIME_SRCS)
+	@echo "Built: $@"
+
 clean:
 	rm -rf $(BINDIR)
 
@@ -75,7 +85,7 @@ test-openmp: openmp
 	@echo "Output: $(OUTDIR)/test_openmp.ppm"
 
 test-cuda: cuda
-	./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 500 --depth 10 \
+	./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 10 --depth 3 \
 	                    --output $(OUTDIR)/test_cuda.ppm
 	@echo "Output: $(OUTDIR)/test_cuda.ppm"
 
