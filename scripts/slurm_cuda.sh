@@ -36,17 +36,34 @@ for SCENE in random cornell; do
         for SPP in 10 50 100 500; do
             OUTFILE=output/cuda_${SCENE}_${W}x${H}_spp${SPP}.ppm
             echo "Running: cuda scene=$SCENE res=${W}x${H} spp=$SPP ..."
-            # cuda_rt --timing-only prints: kernel_ms<TAB>total_ms<TAB>ray_count<TAB>rays_per_sec
+            
+            # Start GPU monitoring in background
+            GPU_LOG=$(mktemp)
+            nvidia-smi --query-gpu=utilization.gpu,memory.used,power.draw \
+                       --format=csv,noheader,nounits --loop-ms=100 > "$GPU_LOG" &
+            SMI_PID=$!
+            
+            # Run the CUDA program
             TIMING=$($BINARY --scene $SCENE --width $W --spp $SPP \
                              --depth $DEPTH --output $OUTFILE --timing-only)
+            
+            # Stop GPU monitoring
+            kill $SMI_PID 2>/dev/null
+            wait $SMI_PID 2>/dev/null
+            
+            # Parse timing output
             KERNEL_MS=$(echo "$TIMING" | cut -f1)
             TOTAL_MS=$(echo "$TIMING"  | cut -f2)
             RAY_COUNT=$(echo "$TIMING" | cut -f3)
             RAYS_PER_SEC=$(echo "$TIMING" | cut -f4)
-            # Query GPU metrics after run
-            GPU_MEMORY=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
-            GPU_UTIL=$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits | head -1)
-            POWER=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits | head -1)
+            
+            # Calculate peak GPU metrics from samples
+            GPU_UTIL=$(cut -d',' -f1 "$GPU_LOG" | sort -n | tail -1)
+            GPU_MEMORY=$(cut -d',' -f2 "$GPU_LOG" | sort -n | tail -1)
+            POWER=$(cut -d',' -f3 "$GPU_LOG" | sort -n | tail -1)
+            
+            # Cleanup
+            rm -f "$GPU_LOG"
             echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$RAY_COUNT,$RAYS_PER_SEC,$GPU_MEMORY,$GPU_UTIL,$POWER,$GPU_NAME" >> "$RESULTS"
             echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms  ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s), GPU: ${GPU_MEMORY} MB mem, ${GPU_UTIL}% util, ${POWER} W"
         done
