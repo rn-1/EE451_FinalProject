@@ -37,12 +37,14 @@ CUDA_SRCS     = src/cuda/main.cu \
 REALTIME_SRCS = src/cuda/main_realtime.cu \
                 src/cuda/render.cu \
                 src/cuda/device_scene.cu
+DIST_SRCS_COMMON = src/cuda/render.cu src/cuda/device_scene.cu
+DIST_FLAGS       = $(NVCCFLAGS) -Isrc/distributed -Isrc/cuda
 
 # Headers (used as dependencies)
 HEADERS = $(wildcard include/*.h) $(wildcard scenes/*.h) \
           src/cuda/render.cuh src/cuda/device_scene.cuh
 
-.PHONY: all serial openmp cuda realtime serial-realtime openmp-realtime clean
+.PHONY: all serial openmp cuda realtime serial-realtime openmp-realtime worker master-realtime clean
 
 all: serial openmp cuda
 
@@ -80,6 +82,18 @@ realtime: $(BINDIR)/realtime_rt
 $(BINDIR)/realtime_rt: $(REALTIME_SRCS) $(HEADERS)
 	@mkdir -p $(BINDIR) $(OUTDIR)
 	$(NVCC) $(NVCCFLAGS) $(LDCUDA) $(LDGL) -o $@ $(REALTIME_SRCS)
+	@echo "Built: $@"
+
+worker: $(BINDIR)/worker_rt
+$(BINDIR)/worker_rt: src/distributed/worker.cu $(DIST_SRCS_COMMON) $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(NVCC) $(DIST_FLAGS) $(LDCUDA) -o $@ src/distributed/worker.cu $(DIST_SRCS_COMMON)
+	@echo "Built: $@"
+
+master-realtime: $(BINDIR)/master_realtime_rt
+$(BINDIR)/master_realtime_rt: src/distributed/master_realtime.cu $(DIST_SRCS_COMMON) $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(NVCC) $(DIST_FLAGS) $(LDCUDA) $(LDGL) -o $@ src/distributed/master_realtime.cu $(DIST_SRCS_COMMON)
 	@echo "Built: $@"
 
 clean:

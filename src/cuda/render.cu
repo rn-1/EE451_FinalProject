@@ -196,6 +196,55 @@ __global__ void kernel_render(curandState* states,
 }
 
 // ============================================================
+//  Tile kernel — same as kernel_render but renders a horizontal
+//  strip.  row is local (0..tile_height); global_row = row + row_offset
+//  is used for ray-direction calculation so rays point to the correct
+//  world-space pixel regardless of which strip this GPU owns.
+// ============================================================
+
+__global__ void kernel_render_tile(curandState* states,
+                                    CameraParams cam,
+                                    DeviceScene  scene,
+                                    color*       fb,
+                                    int tile_w, int tile_h,
+                                    int row_offset) {
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;  // local tile row
+    if (col >= tile_w || row >= tile_h) return;
+
+    int global_row = row + row_offset;   // world-space row for ray direction
+    int idx        = row * tile_w + col; // local framebuffer index
+
+    curandState local_state = states[idx];
+    color pixel_color(0.f, 0.f, 0.f);
+
+    for (int s = 0; s < cam.samples_per_pixel; ++s) {
+        float offset_u = curand_uniform(&local_state) - 0.5f;
+        float offset_v = curand_uniform(&local_state) - 0.5f;
+
+        point3 pixel_center = cam.pixel00_loc
+                            + (col        + offset_u) * cam.pixel_delta_u
+                            + (global_row + offset_v) * cam.pixel_delta_v;
+
+        point3 ray_origin;
+        if (cam.defocus_angle <= 0.f) {
+            ray_origin = cam.center;
+        } else {
+            vec3 p = random_in_unit_disk(&local_state);
+            ray_origin = cam.center
+                       + p.x() * cam.defocus_disk_u
+                       + p.y() * cam.defocus_disk_v;
+        }
+
+        ray r(ray_origin, pixel_center - ray_origin);
+        pixel_color += ray_color_iterative(r, cam.max_depth, scene, &local_state);
+    }
+
+    states[idx] = local_state;
+    fb[idx]     = pixel_color / (float)cam.samples_per_pixel;
+}
+
+// ============================================================
 //  Host orchestration: cuda_render()
 // ============================================================
 
@@ -313,4 +362,42 @@ void cuda_render_cleanup(RenderState& rs) {
     rs.d_fb     = nullptr;
     rs.d_rgba   = nullptr;
     rs.d_states = nullptr;
+}
+
+// ============================================================
+//  Tile render API (for distributed MapReduce use)
+// ============================================================
+
+void cuda_tile_render_init(TileRenderState& ts, int tile_w, int tile_h) {
+    ts.tile_width  = tile_w;
+    ts.tile_height = tile_h;
+    int N = tile_w * tile_h;
+    cudaMalloc(&ts.d_fb,     N * sizeof(color));
+    cudaMalloc(&ts.d_rgba,   N * sizeof(uchar4));
+    cudaMalloc(&ts.d_states, N * sizeof(curandState));
+
+    dim3 block(TILE_W, TILE_H);
+    dim3 grid((tile_w + TILE_W-1)/TILE_W, (tile_h + TILE_H-1)/TILE_H);
+    kernel_init_curand<<<grid, block>>>(ts.d_states, tile_w, tile_h, 42ULL);
+    cudaDeviceSynchronize();
+}
+
+void cuda_tile_render_frame(TileRenderState& ts, const CameraParams& cam,
+                             const DeviceScene& scene, int row_offset) {
+    int tw = ts.tile_width, th = ts.tile_height;
+    dim3 block(TILE_W, TILE_H);
+    dim3 grid((tw + TILE_W-1)/TILE_W, (th + TILE_H-1)/TILE_H);
+    kernel_render_tile<<<grid, block>>>(ts.d_states, cam, scene,
+                                        ts.d_fb, tw, th, row_offset);
+    kernel_to_rgba<<<grid, block>>>(ts.d_fb, ts.d_rgba, tw, th);
+    cudaDeviceSynchronize();
+}
+
+void cuda_tile_render_cleanup(TileRenderState& ts) {
+    cudaFree(ts.d_fb);
+    cudaFree(ts.d_rgba);
+    cudaFree(ts.d_states);
+    ts.d_fb     = nullptr;
+    ts.d_rgba   = nullptr;
+    ts.d_states = nullptr;
 }
