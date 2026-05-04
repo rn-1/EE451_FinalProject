@@ -42,7 +42,7 @@ REALTIME_SRCS = src/cuda/main_realtime.cu \
 HEADERS = $(wildcard include/*.h) $(wildcard scenes/*.h) \
           src/cuda/render.cuh src/cuda/device_scene.cuh
 
-.PHONY: all serial openmp cuda realtime clean
+.PHONY: all serial openmp cuda realtime serial-realtime openmp-realtime clean
 
 all: serial openmp cuda
 
@@ -62,6 +62,18 @@ cuda: $(BINDIR)/cuda_rt
 $(BINDIR)/cuda_rt: $(CUDA_SRCS) $(HEADERS)
 	@mkdir -p $(BINDIR) $(OUTDIR)
 	$(NVCC) $(NVCCFLAGS) $(LDCUDA) -o $@ $(CUDA_SRCS)
+	@echo "Built: $@"
+
+serial-realtime: $(BINDIR)/serial_realtime_rt
+$(BINDIR)/serial_realtime_rt: src/serial/main_realtime.cpp $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(CXXFLAGS) -lglfw -lGL -o $@ src/serial/main_realtime.cpp
+	@echo "Built: $@"
+
+openmp-realtime: $(BINDIR)/openmp_realtime_rt
+$(BINDIR)/openmp_realtime_rt: src/openmp/main_realtime.cpp $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(OMPFLAGS) -lglfw -lGL -o $@ src/openmp/main_realtime.cpp
 	@echo "Built: $@"
 
 realtime: $(BINDIR)/realtime_rt
