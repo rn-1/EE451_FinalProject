@@ -10,7 +10,7 @@ fi
 BINARY=$1
 shift
 
-NUM_CPUS=$(sysctl -n hw.logicalcpu)
+NUM_CPUS=$(nproc)
 
 echo "Running: $BINARY $@"
 
