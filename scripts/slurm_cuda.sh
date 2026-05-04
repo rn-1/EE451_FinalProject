@@ -22,7 +22,7 @@ BINARY=./bin/cuda_rt
 RESULTS=results/timings.csv
 
 if [ ! -f "$RESULTS" ]; then
-    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,ray_count,rays_per_sec,gpu_memory_mb,gpu_util_pct,power_w,gpu_name" > "$RESULTS"
+    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,ray_count,rays_per_sec,gpu_memory_peak_mb,gpu_memory_avg_mb,gpu_util_peak_pct,gpu_util_avg_pct,power_peak_w,power_avg_w,gpu_name" > "$RESULTS"
 fi
 
 DEPTH=50
@@ -58,14 +58,19 @@ for SCENE in random cornell; do
             RAYS_PER_SEC=$(echo "$TIMING" | cut -f4)
             
             # Calculate peak GPU metrics from samples
-            GPU_UTIL=$(cut -d',' -f1 "$GPU_LOG" | sort -n | tail -1)
-            GPU_MEMORY=$(cut -d',' -f2 "$GPU_LOG" | sort -n | tail -1)
-            POWER=$(cut -d',' -f3 "$GPU_LOG" | sort -n | tail -1)
+            GPU_UTIL_PEAK=$(cut -d',' -f1 "$GPU_LOG" | sort -n | tail -1)
+            GPU_MEMORY_PEAK=$(cut -d',' -f2 "$GPU_LOG" | sort -n | tail -1)
+            POWER_PEAK=$(cut -d',' -f3 "$GPU_LOG" | sort -n | tail -1)
+            
+            # Calculate average GPU metrics
+            GPU_UTIL_AVG=$(cut -d',' -f1 "$GPU_LOG" | awk '{sum+=$1; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
+            GPU_MEMORY_AVG=$(cut -d',' -f2 "$GPU_LOG" | awk '{sum+=$1; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
+            POWER_AVG=$(cut -d',' -f3 "$GPU_LOG" | awk '{sum+=$1; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
             
             # Cleanup
             rm -f "$GPU_LOG"
-            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$RAY_COUNT,$RAYS_PER_SEC,$GPU_MEMORY,$GPU_UTIL,$POWER,$GPU_NAME" >> "$RESULTS"
-            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms  ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s), GPU: ${GPU_MEMORY} MB mem, ${GPU_UTIL}% util, ${POWER} W"
+            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$RAY_COUNT,$RAYS_PER_SEC,$GPU_MEMORY_PEAK,$GPU_MEMORY_AVG,$GPU_UTIL_PEAK,$GPU_UTIL_AVG,$POWER_PEAK,$POWER_AVG,$GPU_NAME" >> "$RESULTS"
+            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms  ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s), GPU: ${GPU_MEMORY_PEAK} MB peak mem (${GPU_MEMORY_AVG} MB avg), ${GPU_UTIL_PEAK}% peak util (${GPU_UTIL_AVG}% avg), ${POWER_PEAK} W peak (${POWER_AVG} W avg)"
         done
     done
 done

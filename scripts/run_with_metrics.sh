@@ -49,9 +49,14 @@ if [[ "$BINARY" == *"cuda"* ]]; then
     AVG_CPU_PERCENT=$(awk -v p="$CPU_PERCENT" -v n="$NUM_CPUS" 'BEGIN { printf "%.2f", p / n }')
     
     # Calculate peak GPU metrics from samples
-    GPU_UTIL=$(cut -d',' -f1 "$GPU_LOG" | sort -n | tail -1)
-    GPU_MEMORY=$(cut -d',' -f2 "$GPU_LOG" | sort -n | tail -1)
-    POWER=$(cut -d',' -f3 "$GPU_LOG" | sort -n | tail -1)
+    GPU_UTIL_PEAK=$(cut -d',' -f1 "$GPU_LOG" | sort -n | tail -1)
+    GPU_MEMORY_PEAK=$(cut -d',' -f2 "$GPU_LOG" | sort -n | tail -1)
+    POWER_PEAK=$(cut -d',' -f3 "$GPU_LOG" | sort -n | tail -1)
+    
+    # Calculate average GPU metrics
+    GPU_UTIL_AVG=$(cut -d',' -f1 "$GPU_LOG" | awk '{sum+=$1; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
+    GPU_MEMORY_AVG=$(cut -d',' -f2 "$GPU_LOG" | awk '{sum+=$1; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
+    POWER_AVG=$(cut -d',' -f3 "$GPU_LOG" | awk '{sum+=$1; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
     
     # Cleanup
     rm -f "$GPU_LOG"
@@ -59,7 +64,7 @@ if [[ "$BINARY" == *"cuda"* ]]; then
     echo "Peak memory usage: ${PEAK_MEMORY} MB"
     echo "CPU utilization (aggregate): ${CPU_PERCENT}%"
     echo "CPU utilization (avg per core): ${AVG_CPU_PERCENT}%"
-    echo "Peak GPU memory used: ${GPU_MEMORY} MB"
-    echo "Peak GPU utilization: ${GPU_UTIL}%"
-    echo "Peak power draw: ${POWER} W"
+    echo "Peak GPU memory used: ${GPU_MEMORY_PEAK} MB (avg: ${GPU_MEMORY_AVG} MB)"
+    echo "Peak GPU utilization: ${GPU_UTIL_PEAK}% (avg: ${GPU_UTIL_AVG}%)"
+    echo "Peak power draw: ${POWER_PEAK} W (avg: ${POWER_AVG} W)"
 fi
