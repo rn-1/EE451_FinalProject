@@ -20,7 +20,7 @@ BINARY=./bin/openmp_rt
 RESULTS=results/timings.csv
 
 if [ ! -f "$RESULTS" ]; then
-    echo "impl,scene,width,height,spp,depth,render_ms,ray_count,rays_per_sec" > "$RESULTS"
+    echo "impl,scene,width,height,spp,depth,render_ms,ray_count,rays_per_sec,peak_memory_mb" > "$RESULTS"
 fi
 
 DEPTH=50
@@ -34,13 +34,15 @@ for THREADS in 1 2 4 8 16 32; do
             for SPP in 10 50 100 500; do
                 OUTFILE=output/openmp_t${THREADS}_${SCENE}_${W}x${H}_spp${SPP}.ppm
                 echo "Running: openmp t=$THREADS scene=$SCENE res=${W}x${H} spp=$SPP ..."
-                TIMING=$($BINARY --scene $SCENE --width $W --spp $SPP \
-                                 --depth $DEPTH --output $OUTFILE --timing-only)
+                TIME_OUTPUT=$(/usr/bin/time -v $BINARY --scene $SCENE --width $W --spp $SPP \
+                                 --depth $DEPTH --output $OUTFILE --timing-only 2>&1)
+                TIMING=$(echo "$TIME_OUTPUT" | grep -E "^[0-9]+\.[0-9]+\t[0-9]+\t[0-9]+\.[0-9]+$" | head -1)
+                PEAK_MEMORY=$(echo "$TIME_OUTPUT" | grep "Maximum resident set size" | awk '{print $6 / 1024}')  # Convert KB to MB
                 RENDER_MS=$(echo "$TIMING" | cut -f1)
                 RAY_COUNT=$(echo "$TIMING" | cut -f2)
                 RAYS_PER_SEC=$(echo "$TIMING" | cut -f3)
-                echo "openmp_t${THREADS},$SCENE,$W,$H,$SPP,$DEPTH,$RENDER_MS,$RAY_COUNT,$RAYS_PER_SEC" >> "$RESULTS"
-                echo "  -> ${RENDER_MS} ms, ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s)"
+                echo "openmp_t${THREADS},$SCENE,$W,$H,$SPP,$DEPTH,$RENDER_MS,$RAY_COUNT,$RAYS_PER_SEC,$PEAK_MEMORY" >> "$RESULTS"
+                echo "  -> ${RENDER_MS} ms, ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s), ${PEAK_MEMORY} MB peak memory"
             done
         done
     done

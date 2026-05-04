@@ -22,7 +22,7 @@ BINARY=./bin/cuda_rt
 RESULTS=results/timings.csv
 
 if [ ! -f "$RESULTS" ]; then
-    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,ray_count,rays_per_sec,gpu_name" > "$RESULTS"
+    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,ray_count,rays_per_sec,gpu_memory_mb,gpu_util_pct,power_w,gpu_name" > "$RESULTS"
 fi
 
 DEPTH=50
@@ -43,8 +43,12 @@ for SCENE in random cornell; do
             TOTAL_MS=$(echo "$TIMING"  | cut -f2)
             RAY_COUNT=$(echo "$TIMING" | cut -f3)
             RAYS_PER_SEC=$(echo "$TIMING" | cut -f4)
-            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$RAY_COUNT,$RAYS_PER_SEC,$GPU_NAME" >> "$RESULTS"
-            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms  ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s)"
+            # Query GPU metrics after run
+            GPU_MEMORY=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+            GPU_UTIL=$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits | head -1)
+            POWER=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits | head -1)
+            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$RAY_COUNT,$RAYS_PER_SEC,$GPU_MEMORY,$GPU_UTIL,$POWER,$GPU_NAME" >> "$RESULTS"
+            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms  ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s), GPU: ${GPU_MEMORY} MB mem, ${GPU_UTIL}% util, ${POWER} W"
         done
     done
 done
