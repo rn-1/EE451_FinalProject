@@ -93,13 +93,30 @@ int main(int argc, char** argv) {
             scene_name.c_str(), W, H, spp, depth);
 
     // --- Render loop ---
-    auto t0 = std::chrono::steady_clock::now();
+    auto t0     = std::chrono::steady_clock::now();
+    auto t_start = t0;
     int  frames = 0;
+
+    // Base vup and forward axis for roll
+    vec3  base_vup   = cam.vup;
+    vec3  fwd        = unit_vector(cam.lookat - cam.lookfrom);
+    float roll_speed = 0.3f;  // radians per second
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, GLFW_TRUE);
+
+        // Roll: rotate vup around the forward axis
+        double elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - t_start).count();
+        float a   = (float)elapsed * roll_speed;
+        float c   = cosf(a), sr = sinf(a);
+        // Rodrigues' rotation: v*cos + cross(fwd,v)*sin + fwd*dot(fwd,v)*(1-cos)
+        cam.vup  = base_vup * c
+                 + cross(fwd, base_vup) * sr
+                 + fwd * dot(fwd, base_vup) * (1.f - c);
+        cam.initialize();
 
         // Render on GPU → d_rgba (gamma-corrected uchar4)
         cuda_render_frame_rt(rs, cam, scene);

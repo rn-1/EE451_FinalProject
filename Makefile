@@ -42,7 +42,7 @@ REALTIME_SRCS = src/cuda/main_realtime.cu \
 HEADERS = $(wildcard include/*.h) $(wildcard scenes/*.h) \
           src/cuda/render.cuh src/cuda/device_scene.cuh
 
-.PHONY: all serial openmp cuda realtime clean
+.PHONY: all serial openmp cuda realtime serial-realtime openmp-realtime clean
 
 all: serial openmp cuda
 
@@ -64,6 +64,18 @@ $(BINDIR)/cuda_rt: $(CUDA_SRCS) $(HEADERS)
 	$(NVCC) $(NVCCFLAGS) $(LDCUDA) -o $@ $(CUDA_SRCS)
 	@echo "Built: $@"
 
+serial-realtime: $(BINDIR)/serial_realtime_rt
+$(BINDIR)/serial_realtime_rt: src/serial/main_realtime.cpp $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(CXXFLAGS) -lglfw -lGL -o $@ src/serial/main_realtime.cpp
+	@echo "Built: $@"
+
+openmp-realtime: $(BINDIR)/openmp_realtime_rt
+$(BINDIR)/openmp_realtime_rt: src/openmp/main_realtime.cpp $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(OMPFLAGS) -lglfw -lGL -o $@ src/openmp/main_realtime.cpp
+	@echo "Built: $@"
+
 realtime: $(BINDIR)/realtime_rt
 $(BINDIR)/realtime_rt: $(REALTIME_SRCS) $(HEADERS)
 	@mkdir -p $(BINDIR) $(OUTDIR)
@@ -80,8 +92,8 @@ test-serial: serial
 	@echo "Output: $(OUTDIR)/test_serial.ppm"
 
 test-openmp: openmp
-	OMP_NUM_THREADS=4 ./$(BINDIR)/openmp_rt --scene random --width 200 --spp 10 \
-	                  --depth 10 --output $(OUTDIR)/test_openmp.ppm
+	OMP_NUM_THREADS=4 ./$(BINDIR)/openmp_rt --scene random --width 720 --spp 6 \
+	                  --depth 3 --output $(OUTDIR)/test_openmp.ppm
 	@echo "Output: $(OUTDIR)/test_openmp.ppm"
 
 test-cuda: cuda
