@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -82,6 +83,14 @@ int main(int argc, char** argv) {
     // --- Connect to worker ---
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) { perror("socket"); return 1; }
+
+    // TCP_NODELAY: send RenderRequest immediately without Nagle buffering
+    { int f = 1; setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &f, sizeof(f)); }
+
+    // 5-second timeout on recv so a slow/dropped connection doesn't freeze the loop
+    { struct timeval tv{5, 0};
+      setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+      setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)); }
 
     sockaddr_in waddr{};
     waddr.sin_family = AF_INET;

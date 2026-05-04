@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -43,6 +44,9 @@ int main(int argc, char** argv) {
 
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    // TCP_NODELAY: send pixel data immediately without Nagle buffering
+    { int f = 1; setsockopt(server_fd, IPPROTO_TCP, TCP_NODELAY, &f, sizeof(f)); }
 
     sockaddr_in addr{};
     addr.sin_family      = AF_INET;
