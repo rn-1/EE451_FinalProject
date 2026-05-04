@@ -104,8 +104,7 @@ All three binaries share the same command-line interface:
 Control thread count with `OMP_NUM_THREADS`:
 
 ```bash
-OMP_NUM_THREADS=16 ./bin/openmp_rt --scene random --width 800 --spp 100 \
-                                    --output output/openmp.ppm
+OMP_NUM_THREADS=16 ./bin/openmp_rt --scene random --width 800 --spp 100 --output output/openmp.ppm
 ```
 
 ### CUDA
@@ -119,10 +118,40 @@ Prints both kernel-only time (GPU compute via `cudaEvent`) and total time (inclu
 ### Quick smoke tests
 
 ```bash
-make test-serial    # 200px, 10 spp, random scene
-make test-openmp    # same, 4 threads
-make test-cuda      # same, GPU
+make test-serial    # 800px, 10 spp, random scene
+make test-openmp    # 800px, 10 spp, random scene, 4 threads
+make test-cuda      # 1920px, 500 spp, random scene
 make test-all       # all three
+```
+
+### Metrics
+
+To collect timing and system metrics, use the helper script `run_with_metrics.sh`.  
+It wraps any executable and records runtime information (e.g., wall time, resource usage) alongside your program output.
+
+> **Note:** Make sure the script is executable (only needed once after cloning):
+```bash
+chmod +x scripts/run_with_metrics.sh
+```
+
+#### Usage
+```bash
+./scripts/run_with_metrics.sh <command> [args...]
+```
+
+#### Examples
+```bash
+# Serial
+./scripts/run_with_metrics.sh ./bin/serial_rt \
+  --scene random --width 800 --spp 100 --output output/serial.ppm
+
+# OpenMP
+OMP_NUM_THREADS=16 ./scripts/run_with_metrics.sh ./bin/openmp_rt \
+  --scene random --width 800 --spp 100 --output output/openmp.ppm
+
+# CUDA
+./scripts/run_with_metrics.sh ./bin/cuda_rt \
+  --scene random --width 1920 --spp 500 --output output/cuda.ppm
 ```
 
 ---
@@ -175,8 +204,8 @@ Each script iterates over:
 - **Threads (OpenMP only):** 1, 2, 4, 8, 16, 32
 
 Output is appended to `results/timings.csv` with columns:
-- Serial/OpenMP: `impl, scene, width, height, spp, depth, render_ms`
-- CUDA: `impl, scene, width, height, spp, depth, kernel_ms, total_ms, gpu_name`
+- Serial/OpenMP: `impl, scene, width, height, spp, depth, render_ms, ray_count, rays_per_sec, peak_memory_mb`
+- CUDA: `impl, scene, width, height, spp, depth, kernel_ms, total_ms, ray_count, rays_per_sec, gpu_memory_peak_mb, gpu_memory_avg_mb, gpu_util_peak_pct, gpu_util_avg_pct, power_peak_w, power_avg_w, gpu_name`
 
 `kernel_ms` is measured with `cudaEvent` (GPU compute only). `total_ms` includes cuRAND initialization and host↔device memory transfers.
 
