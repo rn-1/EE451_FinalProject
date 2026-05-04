@@ -61,6 +61,7 @@ int main(int argc, char** argv) {
     // --- Allocate framebuffer ---
     int total_pixels = cam.image_height * cam.image_width;
     std::vector<color> fb(total_pixels, color(0.f, 0.f, 0.f));
+    long long traced_rays = 0;
 
     // --- Render (timed) ---
     Timer timer;
@@ -69,10 +70,11 @@ int main(int argc, char** argv) {
     // Parallel over rows; each thread gets its own mt19937 seeded uniquely.
     // schedule(dynamic,4) helps balance load when some rows have more
     // expensive rays (e.g. many sphere hits vs. sky misses).
-    #pragma omp parallel default(none) shared(cam, world, fb)
+    #pragma omp parallel reduction(+:traced_rays) default(none) shared(cam, world, fb)
     {
         int tid = omp_get_thread_num();
         std::mt19937 rng(42u + static_cast<unsigned>(tid) * 1000003u);
+        long long local_rays = 0;
 
         #pragma omp for schedule(dynamic, 4)
         for (int row = 0; row < cam.image_height; ++row) {
@@ -80,19 +82,24 @@ int main(int argc, char** argv) {
                 color pixel(0.f, 0.f, 0.f);
                 for (int s = 0; s < cam.samples_per_pixel; ++s) {
                     ray r = get_ray(cam, col, row, rng);
-                    pixel += ray_color(r, cam.max_depth, *world, cam.background, rng);
+                    pixel += ray_color(r, cam.max_depth, *world, cam.background, rng, &local_rays);
                 }
                 fb[row * cam.image_width + col] = pixel / (float)cam.samples_per_pixel;
             }
         }
+
+        traced_rays += local_rays;
     }
 
     double ms = timer.elapsed_ms();
+    double rays_per_sec = traced_rays / (ms / 1000.0);
 
     if (timing_only) {
-        std::cout << ms << "\n";
+        std::cout << ms << "\t" << traced_rays << "\t" << rays_per_sec << "\n";
     } else {
         std::cerr << "Render time: " << ms << " ms\n";
+        std::cerr << "Traced rays: " << traced_rays << "\n";
+        std::cerr << "Throughput: " << rays_per_sec / 1e9 << " Grays/s\n";
         write_ppm(output_path, fb, cam.image_width, cam.image_height);
         std::cerr << "Output written to: " << output_path << "\n";
     }

@@ -83,16 +83,21 @@ int main(int argc, char** argv) {
 
     float  kernel_ms = 0.f;
     double total_ms  = 0.0;
+    unsigned long long traced_rays = 0ULL;
 
-    cuda_render(cam, scene, h_fb.data(), &kernel_ms, &total_ms);
+    cuda_render(cam, scene, h_fb.data(), &kernel_ms, &total_ms, &traced_rays);
 
     // --- Output ---
+    double rays_per_sec = traced_rays / (total_ms / 1000.0);
+
     if (timing_only) {
-        // Print: kernel_ms total_ms (tab-separated)
-        std::cout << kernel_ms << "\t" << total_ms << "\n";
+        // Print: kernel_ms total_ms ray_count rays_per_sec (tab-separated)
+        std::cout << kernel_ms << "\t" << total_ms << "\t" << traced_rays << "\t" << rays_per_sec << "\n";
     } else {
         std::cerr << "Render kernel:  " << kernel_ms << " ms\n";
         std::cerr << "Total GPU time: " << total_ms  << " ms\n";
+        std::cerr << "Total rays: " << traced_rays << "\n";
+        std::cerr << "Throughput: " << rays_per_sec / 1e9 << " Grays/s\n";
         write_ppm(output_path, h_fb, cam.image_width, cam.image_height);
         std::cerr << "Output written to: " << output_path << "\n";
     }

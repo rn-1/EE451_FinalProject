@@ -68,11 +68,13 @@ __device__ static bool device_scatter(const MaterialData& mat,
 
 __device__ static color ray_color_iterative(ray r, int max_depth,
                                              const DeviceScene& scene,
-                                             curandState* rs) {
+                                             curandState* rs,
+                                             unsigned long long& ray_count) {
     color accumulated_color(0.f, 0.f, 0.f);
     color running_atten(1.f, 1.f, 1.f);
 
     for (int depth = 0; depth < max_depth; ++depth) {
+        ++ray_count;
         // Find nearest hit
         CudaHitRecord rec;
         bool hit_anything = false;
@@ -147,7 +149,8 @@ __global__ void kernel_render(curandState* states,
                                CameraParams cam,
                                DeviceScene  scene,
                                color*       fb,
-                               int width, int height) {
+                               int width, int height,
+                               unsigned long long* d_ray_count) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     if (col >= width || row >= height) return;
@@ -156,6 +159,7 @@ __global__ void kernel_render(curandState* states,
 
     // Load cuRAND state to registers for this thread
     curandState local_state = states[pixel_idx];
+    unsigned long long local_ray_count = 0ULL;
 
     color pixel_color(0.f, 0.f, 0.f);
 
@@ -179,12 +183,16 @@ __global__ void kernel_render(curandState* states,
         }
 
         ray r(ray_origin, pixel_center - ray_origin);
-        pixel_color += ray_color_iterative(r, cam.max_depth, scene, &local_state);
+        pixel_color += ray_color_iterative(r, cam.max_depth, scene, &local_state, local_ray_count);
     }
 
     // Write back cuRAND state and averaged color
     states[pixel_idx] = local_state;
     fb[pixel_idx] = pixel_color / (float)cam.samples_per_pixel;
+
+    if (local_ray_count > 0) {
+        atomicAdd(d_ray_count, local_ray_count);
+    }
 }
 
 // ============================================================
@@ -195,7 +203,8 @@ void cuda_render(const CameraParams& cam,
                  const DeviceScene&  scene,
                  color*              h_fb,
                  float*              kernel_ms_out,
-                 double*             total_ms_out) {
+                 double*             total_ms_out,
+                 unsigned long long* total_ray_count_out) {
 
     int W = cam.image_width;
     int H = cam.image_height;
@@ -220,13 +229,17 @@ void cuda_render(const CameraParams& cam,
     kernel_init_curand<<<grid, block>>>(d_states, W, H, 12345ULL);
     cudaDeviceSynchronize();
 
+    unsigned long long* d_ray_count = nullptr;
+    cudaMalloc(&d_ray_count, sizeof(unsigned long long));
+    cudaMemset(d_ray_count, 0, sizeof(unsigned long long));
+
     // --- Timed render kernel ---
     cudaEvent_t ev_start, ev_stop;
     cudaEventCreate(&ev_start);
     cudaEventCreate(&ev_stop);
 
     cudaEventRecord(ev_start);
-    kernel_render<<<grid, block>>>(d_states, cam, scene, d_fb, W, H);
+    kernel_render<<<grid, block>>>(d_states, cam, scene, d_fb, W, H, d_ray_count);
     cudaEventRecord(ev_stop);
     cudaEventSynchronize(ev_stop);
 
@@ -236,13 +249,17 @@ void cuda_render(const CameraParams& cam,
     cudaEventDestroy(ev_stop);
 
     // Copy result back to host
+    unsigned long long total_ray_count = 0ULL;
     cudaMemcpy(h_fb, d_fb, N * sizeof(color), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&total_ray_count, d_ray_count, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
 
     double total_ms = wall_timer.elapsed_ms();
 
     cudaFree(d_fb);
     cudaFree(d_states);
+    cudaFree(d_ray_count);
 
     if (kernel_ms_out) *kernel_ms_out = kernel_ms;
     if (total_ms_out)  *total_ms_out  = total_ms;
+    if (total_ray_count_out) *total_ray_count_out = total_ray_count;
 }

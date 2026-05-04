@@ -20,7 +20,7 @@ BINARY=./bin/openmp_rt
 RESULTS=results/timings.csv
 
 if [ ! -f "$RESULTS" ]; then
-    echo "impl,scene,width,height,spp,depth,render_ms" > "$RESULTS"
+    echo "impl,scene,width,height,spp,depth,render_ms,ray_count,rays_per_sec" > "$RESULTS"
 fi
 
 DEPTH=50
@@ -36,8 +36,11 @@ for THREADS in 1 2 4 8 16 32; do
                 echo "Running: openmp t=$THREADS scene=$SCENE res=${W}x${H} spp=$SPP ..."
                 TIMING=$($BINARY --scene $SCENE --width $W --spp $SPP \
                                  --depth $DEPTH --output $OUTFILE --timing-only)
-                echo "openmp_t${THREADS},$SCENE,$W,$H,$SPP,$DEPTH,$TIMING" >> "$RESULTS"
-                echo "  -> ${TIMING} ms"
+                RENDER_MS=$(echo "$TIMING" | cut -f1)
+                RAY_COUNT=$(echo "$TIMING" | cut -f2)
+                RAYS_PER_SEC=$(echo "$TIMING" | cut -f3)
+                echo "openmp_t${THREADS},$SCENE,$W,$H,$SPP,$DEPTH,$RENDER_MS,$RAY_COUNT,$RAYS_PER_SEC" >> "$RESULTS"
+                echo "  -> ${RENDER_MS} ms, ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s)"
             done
         done
     done

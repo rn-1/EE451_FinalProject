@@ -94,7 +94,9 @@ inline ray get_ray(const CameraParams& cam, int col, int row,
 inline color ray_color(const ray& r, int depth,
                        const Hittable& world,
                        const color& background,
-                       std::mt19937& rng) {
+                       std::mt19937& rng,
+                       long long* ray_count = nullptr) {
+    if (ray_count) ++(*ray_count);
     if (depth <= 0) return color(0.f, 0.f, 0.f);
 
     hit_record rec;
@@ -116,7 +118,7 @@ inline color ray_color(const ray& r, int depth,
     if (!rec.mat->scatter(r, rec, attenuation, scattered, rng))
         return emitted;
 
-    return emitted + attenuation * ray_color(scattered, depth - 1, world, background, rng);
+    return emitted + attenuation * ray_color(scattered, depth - 1, world, background, rng, ray_count);
 }
 
 // Full render — fills framebuffer[height * width]

@@ -22,7 +22,7 @@ BINARY=./bin/cuda_rt
 RESULTS=results/timings.csv
 
 if [ ! -f "$RESULTS" ]; then
-    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,gpu_name" > "$RESULTS"
+    echo "impl,scene,width,height,spp,depth,kernel_ms,total_ms,ray_count,rays_per_sec,gpu_name" > "$RESULTS"
 fi
 
 DEPTH=50
@@ -36,13 +36,15 @@ for SCENE in random cornell; do
         for SPP in 10 50 100 500; do
             OUTFILE=output/cuda_${SCENE}_${W}x${H}_spp${SPP}.ppm
             echo "Running: cuda scene=$SCENE res=${W}x${H} spp=$SPP ..."
-            # cuda_rt --timing-only prints: kernel_ms<TAB>total_ms
+            # cuda_rt --timing-only prints: kernel_ms<TAB>total_ms<TAB>ray_count<TAB>rays_per_sec
             TIMING=$($BINARY --scene $SCENE --width $W --spp $SPP \
                              --depth $DEPTH --output $OUTFILE --timing-only)
             KERNEL_MS=$(echo "$TIMING" | cut -f1)
             TOTAL_MS=$(echo "$TIMING"  | cut -f2)
-            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$GPU_NAME" >> "$RESULTS"
-            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms"
+            RAY_COUNT=$(echo "$TIMING" | cut -f3)
+            RAYS_PER_SEC=$(echo "$TIMING" | cut -f4)
+            echo "cuda,$SCENE,$W,$H,$SPP,$DEPTH,$KERNEL_MS,$TOTAL_MS,$RAY_COUNT,$RAYS_PER_SEC,$GPU_NAME" >> "$RESULTS"
+            echo "  -> kernel=${KERNEL_MS} ms  total=${TOTAL_MS} ms  ${RAY_COUNT} rays ($(echo "$RAYS_PER_SEC / 1e9" | bc -l) Grays/s)"
         done
     done
 done

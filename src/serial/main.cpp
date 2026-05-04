@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
     std::vector<color> fb;
     fb.resize(cam.image_height * cam.image_width);
     std::mt19937 rng(42);
+    long long traced_rays = 0;
 
     Timer timer;
     timer.begin();
@@ -66,18 +67,21 @@ int main(int argc, char** argv) {
             color pixel(0.f, 0.f, 0.f);
             for (int s = 0; s < cam.samples_per_pixel; ++s) {
                 ray r = get_ray(cam, col, row, rng);
-                pixel += ray_color(r, cam.max_depth, *world, cam.background, rng);
+                pixel += ray_color(r, cam.max_depth, *world, cam.background, rng, &traced_rays);
             }
             fb[row * cam.image_width + col] = pixel / (float)cam.samples_per_pixel;
         }
     }
 
     double ms = timer.elapsed_ms();
+    double rays_per_sec = traced_rays / (ms / 1000.0);
 
     if (timing_only) {
-        std::cout << ms << "\n";
+        std::cout << ms << "\t" << traced_rays << "\t" << rays_per_sec << "\n";
     } else {
         std::cerr << "Render time: " << ms << " ms\n";
+        std::cerr << "Traced rays: " << traced_rays << "\n";
+        std::cerr << "Throughput: " << rays_per_sec / 1e9 << " Grays/s\n";
         write_ppm(output_path, fb, cam.image_width, cam.image_height);
         std::cerr << "Output written to: " << output_path << "\n";
     }

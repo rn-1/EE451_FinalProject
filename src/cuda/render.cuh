@@ -15,4 +15,5 @@ void cuda_render(const CameraParams& cam,
                  const DeviceScene&  scene,
                  color*              h_fb,
                  float*              kernel_ms_out,
-                 double*             total_ms_out);
+                 double*             total_ms_out,
+                 unsigned long long* total_ray_count_out = nullptr);
