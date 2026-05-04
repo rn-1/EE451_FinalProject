@@ -65,17 +65,17 @@ clean:
 
 # Quick test targets (small render to verify correctness)
 test-serial: serial
-	./$(BINDIR)/serial_rt --scene random --width 200 --spp 10 --depth 10 \
+	./scripts/run_with_metrics.sh ./$(BINDIR)/serial_rt --scene random --width 800 --spp 10 --depth 10 \
 	                       --output $(OUTDIR)/test_serial.ppm
 	@echo "Output: $(OUTDIR)/test_serial.ppm"
 
 test-openmp: openmp
-	OMP_NUM_THREADS=4 ./$(BINDIR)/openmp_rt --scene random --width 200 --spp 10 \
+	./scripts/run_with_metrics.sh OMP_NUM_THREADS=4 ./$(BINDIR)/openmp_rt --scene random --width 800 --spp 10 \
 	                  --depth 10 --output $(OUTDIR)/test_openmp.ppm
 	@echo "Output: $(OUTDIR)/test_openmp.ppm"
 
 test-cuda: cuda
-	./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 500 --depth 10 \
+	./scripts/run_with_metrics.sh ./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 500 --depth 10 \
 	                    --output $(OUTDIR)/test_cuda.ppm
 	@echo "Output: $(OUTDIR)/test_cuda.ppm"
 
