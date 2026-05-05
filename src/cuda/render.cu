@@ -217,6 +217,7 @@ __global__ void kernel_render_tile(curandState* states,
 
     curandState local_state = states[idx];
     color pixel_color(0.f, 0.f, 0.f);
+    unsigned long long local_ray_count = 0;
 
     for (int s = 0; s < cam.samples_per_pixel; ++s) {
         float offset_u = curand_uniform(&local_state) - 0.5f;
@@ -237,7 +238,7 @@ __global__ void kernel_render_tile(curandState* states,
         }
 
         ray r(ray_origin, pixel_center - ray_origin);
-        pixel_color += ray_color_iterative(r, cam.max_depth, scene, &local_state);
+        pixel_color += ray_color_iterative(r, cam.max_depth, scene, &local_state, local_ray_count);
     }
 
     states[idx] = local_state;
@@ -335,9 +336,10 @@ void cuda_render_init(RenderState& rs, int width, int height) {
     rs.width  = width;
     rs.height = height;
     int N = width * height;
-    cudaMalloc(&rs.d_fb,     N * sizeof(color));
-    cudaMalloc(&rs.d_rgba,   N * sizeof(uchar4));
-    cudaMalloc(&rs.d_states, N * sizeof(curandState));
+    cudaMalloc(&rs.d_fb,        N * sizeof(color));
+    cudaMalloc(&rs.d_rgba,      N * sizeof(uchar4));
+    cudaMalloc(&rs.d_states,    N * sizeof(curandState));
+    cudaMalloc(&rs.d_ray_count, sizeof(unsigned long long));
 
     dim3 block(TILE_W, TILE_H);
     dim3 grid((width + TILE_W-1)/TILE_W, (height + TILE_H-1)/TILE_H);
@@ -350,7 +352,7 @@ void cuda_render_frame_rt(RenderState& rs, const CameraParams& cam,
     int W = rs.width, H = rs.height;
     dim3 block(TILE_W, TILE_H);
     dim3 grid((W + TILE_W-1)/TILE_W, (H + TILE_H-1)/TILE_H);
-    kernel_render<<<grid, block>>>(rs.d_states, cam, scene, rs.d_fb, W, H);
+    kernel_render<<<grid, block>>>(rs.d_states, cam, scene, rs.d_fb, W, H, rs.d_ray_count);
     kernel_to_rgba<<<grid, block>>>(rs.d_fb, rs.d_rgba, W, H);
     cudaDeviceSynchronize();
 }
@@ -359,9 +361,11 @@ void cuda_render_cleanup(RenderState& rs) {
     cudaFree(rs.d_fb);
     cudaFree(rs.d_rgba);
     cudaFree(rs.d_states);
-    rs.d_fb     = nullptr;
-    rs.d_rgba   = nullptr;
-    rs.d_states = nullptr;
+    cudaFree(rs.d_ray_count);
+    rs.d_fb        = nullptr;
+    rs.d_rgba      = nullptr;
+    rs.d_states    = nullptr;
+    rs.d_ray_count = nullptr;
 }
 
 // ============================================================

@@ -17,11 +17,12 @@ void cuda_render(const CameraParams& cam,
 // Persistent GPU state for the real-time render loop.
 // Allocate once with cuda_render_init; reuse every frame.
 struct RenderState {
-    curandState* d_states = nullptr;
-    color*       d_fb     = nullptr;
-    uchar4*      d_rgba   = nullptr;
-    int          width    = 0;
-    int          height   = 0;
+    curandState*        d_states    = nullptr;
+    color*              d_fb        = nullptr;
+    uchar4*             d_rgba      = nullptr;
+    unsigned long long* d_ray_count = nullptr;  // throwaway counter required by kernel_render
+    int                 width       = 0;
+    int                 height      = 0;
 };
 
 void cuda_render_init(RenderState& rs, int width, int height);

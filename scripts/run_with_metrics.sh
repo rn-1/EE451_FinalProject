@@ -12,13 +12,18 @@ shift
 
 NUM_CPUS=$(nproc)
 
-echo "Running: $BINARY $@"
+# Locate GNU time (-v flag); prefer /usr/bin/time, fall back to PATH
+GNU_TIME=$(command -v time)
+for candidate in /usr/bin/time /bin/time; do
+    if [ -x "$candidate" ]; then GNU_TIME="$candidate"; break; fi
+done
 
+echo "Running: $BINARY $@"
 echo "Logical CPUs: ${NUM_CPUS}"
 
 # For CPU binaries (serial, openmp)
 if [[ "$BINARY" == *"serial"* ]] || [[ "$BINARY" == *"openmp"* ]]; then
-    TIME_OUTPUT=$(/usr/bin/time -v $BINARY "$@" 2>&1)
+    TIME_OUTPUT=$("$GNU_TIME" -v $BINARY "$@" 2>&1)
     echo "$TIME_OUTPUT" | grep -v "Command being timed"
     PEAK_MEMORY=$(echo "$TIME_OUTPUT" | grep "Maximum resident set size" | awk '{print $6 / 1024}')  # KB to MB
     CPU_PERCENT=$(echo "$TIME_OUTPUT" | grep "Percent of CPU this job got" | awk '{print $7}' | tr -d '%')
@@ -37,7 +42,7 @@ if [[ "$BINARY" == *"cuda"* ]]; then
     SMI_PID=$!
     
     # Run the CUDA program
-    TIME_OUTPUT=$(/usr/bin/time -v $BINARY "$@" 2>&1)
+    TIME_OUTPUT=$("$GNU_TIME" -v $BINARY "$@" 2>&1)
     
     # Stop GPU monitoring
     kill $SMI_PID 2>/dev/null
