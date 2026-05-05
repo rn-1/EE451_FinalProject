@@ -1,13 +1,16 @@
-// Distributed ray tracer — Master node (reducer).
-// Runs locally (RTX 3060).  Splits frame into top/bottom halves:
-//   top  (rows 0..H/2)  → rendered locally on RTX 3060
-//   bottom (rows H/2..H) → sent to remote worker (RTX 3070 Ti) via TCP
-// Both halves are computed in parallel; master combines and displays via GLFW.
+// Distributed ray tracer — Master node (reducer), multi-worker.
+// Splits frame into (1 + N_workers) equal horizontal tiles.
+// Tile 0: local GPU.  Tiles 1..N: sent to remote workers via TCP in parallel.
 //
-// Usage:
-//   ./bin/master_realtime_rt --worker-ip <IP> [--worker-port 9000]
-//                            [--scene random|cornell] [--width 1280]
-//                            [--spp 4] [--depth 4] [--device 0]
+// Usage (single worker, backward compat):
+//   ./bin/master_realtime_rt --worker-ip <IP> [--worker-port 9000] ...
+//
+// Usage (multiple workers — set NUM_NODES here):
+//   ./bin/master_realtime_rt \
+//       --workers "IP1:PORT1,IP2:PORT2,IP3:PORT3" \
+//       [--scene random|cornell] [--width 1280] [--spp 4] [--depth 4]
+//
+// Number of rendering nodes = 1 (local GPU) + number of --workers entries.
 
 #include <GLFW/glfw3.h>
 #include <arpa/inet.h>
@@ -20,6 +23,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -30,18 +34,79 @@
 #include "../../include/camera.h"
 #include "protocol.h"
 
+// ── Per-worker connection state ──────────────────────────────────────────────
+
+struct WorkerConn {
+    std::string ip;
+    int         port      = 9000;
+    int         sock      = -1;
+    int         row_start = 0;
+    int         row_end   = 0;
+    bool        ok        = true;
+};
+
+static int connect_worker(const std::string& ip, int port) {
+    int s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) return -1;
+    { int f = 1; setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &f, sizeof(f)); }
+    { struct timeval tv{5, 0};
+      setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+      setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)); }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port   = htons((uint16_t)port);
+    if (inet_pton(AF_INET, ip.c_str(), &addr.sin_addr) <= 0) { close(s); return -1; }
+    if (connect(s, (sockaddr*)&addr, sizeof(addr)) < 0)       { close(s); return -1; }
+    return s;
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
 int main(int argc, char** argv) {
-    std::string worker_ip  = get_arg(argc, argv, "--worker-ip",   "127.0.0.1");
-    int worker_port = std::stoi(get_arg(argc, argv, "--worker-port", "9000"));
-    std::string scene_name = get_arg(argc, argv, "--scene",        "random");
-    int img_width  = std::stoi(get_arg(argc, argv, "--width",      "1280"));
-    int spp        = std::stoi(get_arg(argc, argv, "--spp",        "4"));
-    int depth      = std::stoi(get_arg(argc, argv, "--depth",      "4"));
-    int device_id  = std::stoi(get_arg(argc, argv, "--device",     "0"));
+
+    // ── Build worker list ────────────────────────────────────────────────────
+    // Option A (multi): --workers "IP1:PORT1,IP2:PORT2,..."
+    // Option B (legacy single): --worker-ip IP [--worker-port 9000]
+    std::vector<WorkerConn> workers;
+
+    std::string workers_arg = get_arg(argc, argv, "--workers", "");
+    if (!workers_arg.empty()) {
+        std::istringstream ss(workers_arg);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            WorkerConn w;
+            auto colon = token.rfind(':');
+            if (colon != std::string::npos) {
+                w.ip   = token.substr(0, colon);
+                w.port = std::stoi(token.substr(colon + 1));
+            } else {
+                w.ip   = token;
+                w.port = 9000;
+            }
+            workers.push_back(w);
+        }
+    } else {
+        std::string ip = get_arg(argc, argv, "--worker-ip", "");
+        if (!ip.empty()) {
+            WorkerConn w;
+            w.ip   = ip;
+            w.port = std::stoi(get_arg(argc, argv, "--worker-port", "9000"));
+            workers.push_back(w);
+        }
+    }
+
+    std::string scene_name = get_arg(argc, argv, "--scene",  "random");
+    int img_width = std::stoi(get_arg(argc, argv, "--width",  "1280"));
+    int spp       = std::stoi(get_arg(argc, argv, "--spp",    "4"));
+    int depth     = std::stoi(get_arg(argc, argv, "--depth",  "4"));
+    int device_id = std::stoi(get_arg(argc, argv, "--device", "0"));
 
     cudaSetDevice(device_id);
 
-    // --- Camera setup ---
+    // Total rendering nodes: 1 local + N remote
+    int num_nodes = 1 + (int)workers.size();
+
+    // ── Camera ───────────────────────────────────────────────────────────────
     CameraParams cam;
     if (scene_name == "cornell") {
         cam.aspect_ratio  = 1.f;
@@ -70,45 +135,36 @@ int main(int argc, char** argv) {
     int W = cam.image_width;
     int H = cam.image_height;
 
-    // Horizontal split: local = top half, remote = bottom half.
-    // If H is odd, give the extra row to the local node.
-    int local_row_start  = 0;
-    int local_row_end    = H / 2 + (H % 2);  // top
-    int remote_row_start = local_row_end;
-    int remote_row_end   = H;                 // bottom
+    // ── Tile boundaries ───────────────────────────────────────────────────────
+    // Divide H into num_nodes equal strips; last strip absorbs any remainder.
+    int base_h = H / num_nodes;
 
-    int local_tile_h  = local_row_end  - local_row_start;
-    int remote_tile_h = remote_row_end - remote_row_start;
+    int local_row_start = 0;
+    int local_row_end   = (num_nodes == 1) ? H : base_h;  // all rows if solo
+    int local_tile_h    = local_row_end - local_row_start;
 
-    // --- Connect to worker ---
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { perror("socket"); return 1; }
-
-    // TCP_NODELAY: send RenderRequest immediately without Nagle buffering
-    { int f = 1; setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &f, sizeof(f)); }
-
-    // 5-second timeout on recv so a slow/dropped connection doesn't freeze the loop
-    { struct timeval tv{5, 0};
-      setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-      setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)); }
-
-    sockaddr_in waddr{};
-    waddr.sin_family = AF_INET;
-    waddr.sin_port   = htons((uint16_t)worker_port);
-    if (inet_pton(AF_INET, worker_ip.c_str(), &waddr.sin_addr) <= 0) {
-        fprintf(stderr, "Master | invalid worker IP: %s\n", worker_ip.c_str());
-        return 1;
+    for (int i = 0; i < (int)workers.size(); ++i) {
+        workers[i].row_start = base_h * (i + 1);
+        workers[i].row_end   = (i == (int)workers.size() - 1)
+                               ? H
+                               : base_h * (i + 2);
     }
-    if (connect(sock, (sockaddr*)&waddr, sizeof(waddr)) < 0) {
-        perror("connect");
-        fprintf(stderr, "Master | could not connect to worker at %s:%d\n",
-                worker_ip.c_str(), worker_port);
-        return 1;
-    }
-    fprintf(stderr, "Master | connected to worker %s:%d\n",
-            worker_ip.c_str(), worker_port);
 
-    // --- Local scene + tile render state ---
+    // ── Connect to workers ───────────────────────────────────────────────────
+    for (auto& w : workers) {
+        w.sock = connect_worker(w.ip, w.port);
+        if (w.sock < 0) {
+            fprintf(stderr, "Master | WARN: could not connect to worker %s:%d — skipping\n",
+                    w.ip.c_str(), w.port);
+            w.ok = false;
+        } else {
+            fprintf(stderr, "Master | connected to worker %s:%d  (rows %d..%d, %d rows)\n",
+                    w.ip.c_str(), w.port,
+                    w.row_start, w.row_end, w.row_end - w.row_start);
+        }
+    }
+
+    // ── Local scene + tile state ─────────────────────────────────────────────
     DeviceScene scene;
     if (scene_name == "cornell")
         scene = build_device_cornell_box();
@@ -118,7 +174,7 @@ int main(int argc, char** argv) {
     TileRenderState local_ts;
     cuda_tile_render_init(local_ts, W, local_tile_h);
 
-    // --- GLFW window ---
+    // ── GLFW window + GL texture ─────────────────────────────────────────────
     if (!glfwInit()) { fprintf(stderr, "GLFW init failed\n"); return 1; }
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(W, H, "Ray Tracer (Distributed)", nullptr, nullptr);
@@ -136,36 +192,43 @@ int main(int argc, char** argv) {
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,1,0,1,-1,1);
     glMatrixMode(GL_MODELVIEW);  glLoadIdentity();
 
-    // Full-frame host buffer (combined top + bottom)
+    // ── Host pixel buffers ────────────────────────────────────────────────────
     std::vector<uchar4> h_full(W * H);
     std::vector<uchar4> h_local(W * local_tile_h);
-    std::vector<uchar4> h_remote(W * remote_tile_h);
 
-    // Camera roll state
+    std::vector<std::vector<uchar4>> h_remote(workers.size());
+    for (int i = 0; i < (int)workers.size(); ++i)
+        h_remote[i].resize(W * (workers[i].row_end - workers[i].row_start));
+
+    // ── Camera roll state ─────────────────────────────────────────────────────
     vec3  base_vup   = cam.vup;
     vec3  fwd        = unit_vector(cam.lookat - cam.lookfrom);
     float roll_speed = 0.3f;
 
+    // ── Print summary ─────────────────────────────────────────────────────────
     fprintf(stderr,
-            "Master | scene=%s  res=%dx%d  spp=%d  depth=%d\n"
-            "       | local  rows %d..%d (%d rows) → RTX 3060\n"
-            "       | remote rows %d..%d (%d rows) → RTX 3070 Ti\n"
-            "       | ESC to quit\n",
-            scene_name.c_str(), W, H, spp, depth,
-            local_row_start,  local_row_end,  local_tile_h,
-            remote_row_start, remote_row_end, remote_tile_h);
+            "Master | scene=%s  res=%dx%d  spp=%d  depth=%d  nodes=%d\n"
+            "       | local rows %d..%d (%d rows) → local GPU\n",
+            scene_name.c_str(), W, H, spp, depth, num_nodes,
+            local_row_start, local_row_end, local_tile_h);
+    for (int i = 0; i < (int)workers.size(); ++i)
+        fprintf(stderr, "       | worker[%d] %s:%d rows %d..%d (%d rows)\n",
+                i, workers[i].ip.c_str(), workers[i].port,
+                workers[i].row_start, workers[i].row_end,
+                workers[i].row_end - workers[i].row_start);
+    fprintf(stderr, "       | ESC to quit\n");
 
     auto t0      = std::chrono::steady_clock::now();
     auto t_start = t0;
     int  frames  = 0;
-    bool worker_ok = true;
 
+    // ── Render loop ───────────────────────────────────────────────────────────
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, GLFW_TRUE);
 
-        // Camera roll
+        // Camera roll (Rodrigues around forward axis)
         double elapsed = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - t_start).count();
         float a = (float)elapsed * roll_speed;
@@ -175,55 +238,65 @@ int main(int argc, char** argv) {
                 + fwd * dot(fwd, base_vup) * (1.f - c);
         cam.initialize();
 
-        // ── MAPPER 2: network thread sends request to worker, receives bottom half ──
-        bool net_ok = false;
-        std::thread net_thread([&]() {
-            if (!worker_ok) return;
+        // ── MAPPERS: one thread per worker, run in parallel with local GPU ────
+        std::vector<bool>        net_ok(workers.size(), false);
+        std::vector<std::thread> net_threads;
+        net_threads.reserve(workers.size());
 
-            RenderRequest req{};
-            req.width      = W;
-            req.height     = H;
-            req.row_start  = remote_row_start;
-            req.row_end    = remote_row_end;
-            req.spp        = spp;
-            req.depth      = depth;
-            strncpy(req.scene_name, scene_name.c_str(), 31);
-            req.cam        = cam;
+        for (int i = 0; i < (int)workers.size(); ++i) {
+            net_threads.emplace_back([&, i]() {
+                WorkerConn& w = workers[i];
+                if (!w.ok) return;
 
-            if (!send_all(sock, &req, sizeof(req))) return;
+                RenderRequest req{};
+                req.width     = W;
+                req.height    = H;
+                req.row_start = w.row_start;
+                req.row_end   = w.row_end;
+                req.spp       = spp;
+                req.depth     = depth;
+                strncpy(req.scene_name, scene_name.c_str(), 31);
+                req.cam       = cam;
 
-            RenderResponse resp{};
-            if (!recv_all(sock, &resp, sizeof(resp))) return;
-            if (!recv_all(sock, h_remote.data(),
-                          resp.num_pixels * sizeof(uchar4))) return;
-            net_ok = true;
-        });
+                if (!send_all(w.sock, &req, sizeof(req))) return;
 
-        // ── MAPPER 1: local GPU renders top half ──
+                RenderResponse resp{};
+                if (!recv_all(w.sock, &resp, sizeof(resp))) return;
+                if (!recv_all(w.sock, h_remote[i].data(),
+                              resp.num_pixels * sizeof(uchar4))) return;
+                net_ok[i] = true;
+            });
+        }
+
+        // ── MAPPER 0: local GPU renders its tile ──────────────────────────────
         cuda_tile_render_frame(local_ts, cam, scene, local_row_start);
         cudaMemcpy(h_local.data(), local_ts.d_rgba,
                    W * local_tile_h * sizeof(uchar4),
                    cudaMemcpyDeviceToHost);
 
-        net_thread.join();
-        if (!net_ok) {
-            fprintf(stderr, "Master | worker disconnected, continuing local-only\n");
-            worker_ok = false;
+        // Wait for all network threads
+        for (auto& t : net_threads) t.join();
+
+        for (int i = 0; i < (int)workers.size(); ++i) {
+            if (!net_ok[i] && workers[i].ok) {
+                fprintf(stderr, "Master | worker[%d] %s:%d disconnected\n",
+                        i, workers[i].ip.c_str(), workers[i].port);
+                workers[i].ok = false;
+            }
         }
 
-        // ── REDUCER: combine top + bottom into full framebuffer ──
-        memcpy(h_full.data(),
-               h_local.data(),
-               W * local_tile_h * sizeof(uchar4));
+        // ── REDUCER: assemble full frame from all tiles ───────────────────────
+        memcpy(h_full.data(), h_local.data(), W * local_tile_h * sizeof(uchar4));
 
-        if (worker_ok) {
-            memcpy(h_full.data() + W * local_tile_h,
-                   h_remote.data(),
-                   W * remote_tile_h * sizeof(uchar4));
+        for (int i = 0; i < (int)workers.size(); ++i) {
+            if (!workers[i].ok) continue;  // keep stale data visible
+            int th = workers[i].row_end - workers[i].row_start;
+            memcpy(h_full.data() + W * workers[i].row_start,
+                   h_remote[i].data(),
+                   W * th * sizeof(uchar4));
         }
-        // (if worker failed, bottom half shows whatever was last received)
 
-        // Upload full frame to GL texture and draw
+        // Upload full frame + draw
         glBindTexture(GL_TEXTURE_2D, tex);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, W, H,
                         GL_RGBA, GL_UNSIGNED_BYTE, h_full.data());
@@ -242,11 +315,10 @@ int main(int argc, char** argv) {
         auto t1  = std::chrono::steady_clock::now();
         double s = std::chrono::duration<double>(t1 - t0).count();
         if (s >= 0.5) {
-            char title[160];
+            char title[256];
             snprintf(title, sizeof(title),
-                     "Ray Tracer (Distributed%s)  |  %.1f FPS  |  spp=%d depth=%d  |  %dx%d",
-                     worker_ok ? "" : " — worker offline",
-                     frames / s, spp, depth, W, H);
+                     "Ray Tracer (Distributed, %d nodes)  |  %.1f FPS  |  spp=%d depth=%d  |  %dx%d",
+                     num_nodes, frames / s, spp, depth, W, H);
             glfwSetWindowTitle(window, title);
             frames = 0; t0 = t1;
         }
@@ -254,7 +326,7 @@ int main(int argc, char** argv) {
 
     cuda_tile_render_cleanup(local_ts);
     free_device_scene(scene);
-    close(sock);
+    for (auto& w : workers) if (w.sock >= 0) close(w.sock);
     glDeleteTextures(1, &tex);
     glfwDestroyWindow(window);
     glfwTerminate();
