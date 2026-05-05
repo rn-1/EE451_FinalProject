@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         world = make_simple_scene(cam, mats);
     } else if (scene_name == "medium") {
         world = make_medium_scene(cam, mats);
-    }else if (scene_name == "complex") {
+    } else if (scene_name == "complex") {
         world = make_complex_scene(cam, mats);
     }  else {
         world = make_random_spheres_scene(cam, mats);

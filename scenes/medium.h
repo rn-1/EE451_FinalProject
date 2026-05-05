@@ -31,10 +31,10 @@ inline std::shared_ptr<HittableList> make_medium_scene(
             if ((center - point3(4.f, 0.2f, 0.f)).length() <= 0.9f) continue;
 
             std::shared_ptr<Material> mat;
-            if (choose < 0.8f) {
+            if (choose < 0.5f) {
                 color alb = random_vec(rng) * random_vec(rng);
                 mat = std::make_shared<Lambertian>(alb);
-            } else if (choose < 0.95f) {
+            } else if (choose < 0.90f) {
                 color alb = random_vec(rng, 0.5f, 1.f);
                 float fuzz = rand_float(rng, 0.f, 0.5f);
                 mat = std::make_shared<Metal>(alb, fuzz);

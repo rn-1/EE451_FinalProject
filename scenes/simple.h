@@ -26,7 +26,7 @@ inline std::shared_ptr<HittableList> make_simple_scene(
     cam.image_width       = 400;
     cam.samples_per_pixel = 100;
     cam.max_depth         = 50;
-    cam.vfov              = 30.f;
+    cam.vfov              = 20.f;
     cam.lookfrom          = point3(0.f, 2.5f, 10.f);
     cam.lookat            = point3(0.f, 0.f, 0.f);
     cam.vup               = vec3(0.f, 1.f, 0.f);

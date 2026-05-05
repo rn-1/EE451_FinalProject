@@ -17,24 +17,24 @@ inline std::shared_ptr<HittableList> make_complex_scene(
 
     // Materials
     auto lavender = std::make_shared<Lambertian>(color(0.59f, 0.48f, 0.71f));
-    auto ground = std::make_shared<Metal>(color(0.75f, 0.75f, 0.75f), 0.f);
+    auto ceiling = std::make_shared<Metal>(color(0.75f, 0.75f, 0.75f), 0.f);
+    auto ground = std::make_shared<Metal>(color(0.5f, 0.5f, 0.55f), 0.f);
     mats.insert(mats.end(), {lavender, ground});
 
-    for (int a = -5; a < 5; ++a) {
-        for (int b = -5; b < 5; ++b) {
+    for (int a = -10; a < 10; ++a) {
+        for (int b = -10; b < 10; ++b) {
             float choose = rand_float(rng);
             point3 center(a + 0.9f * rand_float(rng),
-                          0.2f,
+                          -0.3f /*+ rand_float(rng)*/,
                           b + 0.9f * rand_float(rng));
 
-            // Skip spheres too close to the three big ones
-            if ((center - point3(4.f, 0.2f, 0.f)).length() <= 0.9f) continue;
+            if ((center - point3(0.f, 0.0f, -1.0f)).length() <= 0.9f) continue;
 
             std::shared_ptr<Material> mat;
-            if (choose < 0.6f) {
+            if (choose < 0.1f) {
                 color alb = random_vec(rng) * random_vec(rng);
                 mat = std::make_shared<Lambertian>(alb);
-            } else if (choose < 0.95f) {
+            } else if (choose < 0.8f) {
                 color alb = random_vec(rng, 0.5f, 1.f);
                 float fuzz = rand_float(rng, 0.f, 0.5f);
                 mat = std::make_shared<Metal>(alb, fuzz);
@@ -45,7 +45,8 @@ inline std::shared_ptr<HittableList> make_complex_scene(
             world->add(std::make_shared<Sphere>(center, 0.2f, mat.get()));
         }
     }
-
+    
+    //world->add(std::make_shared<Sphere>(point3(0,102.0,-1), 100, ceiling.get()));
     world->add(std::make_shared<Sphere>(point3(0,0,-1), 0.5, lavender.get()));
     world->add(std::make_shared<Sphere>(point3(0,-100.5,-1), 100, ground.get()));
 

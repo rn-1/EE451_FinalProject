@@ -17,6 +17,9 @@
 #include "../../include/camera.h"
 #include "../../scenes/random_spheres.h"
 #include "../../scenes/cornell_box.h"
+#include "../../scenes/simple.h"
+#include "../../scenes/medium.h"
+#include "../../scenes/complex.h"
 
 #include <omp.h>
 #include <iostream>
@@ -40,7 +43,13 @@ int main(int argc, char** argv) {
 
     if (scene_name == "cornell") {
         world = make_cornell_box_scene(cam, mats);
-    } else {
+    } else if (scene_name == "simple") {
+        world = make_simple_scene(cam, mats);
+    } else if (scene_name == "medium") {
+        world = make_medium_scene(cam, mats);
+    } else if (scene_name == "complex") {
+        world = make_complex_scene(cam, mats);
+    }  else {
         world = make_random_spheres_scene(cam, mats);
     }
 
