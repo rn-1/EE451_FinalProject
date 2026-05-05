@@ -130,5 +130,9 @@ DeviceScene build_device_random_spheres();
 // Build Cornell Box scene on device
 DeviceScene build_device_cornell_box();
 
+DeviceScene build_device_simple_scene();
+DeviceScene build_device_medium_scene();
+DeviceScene build_device_complex_scene();
+
 // Free all device allocations
 void free_device_scene(DeviceScene& scene);

@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
         cam.defocus_angle     = 0.f;
         cam.focus_dist        = 10.f;
         cam.background        = color(0.f, 0.f, 0.f);
-    } else {
+    } else if (scene_name == "random") {
         // Random spheres defaults
         cam.aspect_ratio      = 16.f / 9.f;
         cam.vfov              = 20.f;
@@ -56,6 +56,15 @@ int main(int argc, char** argv) {
         cam.defocus_angle     = 0.6f;
         cam.focus_dist        = 10.f;
         cam.background        = color(0.5f, 0.7f, 1.f);
+    } else {
+        cam.aspect_ratio      = 16.f / 9.f;
+        cam.vfov              = 20.f;
+        cam.lookfrom          = point3(0.f, 2.5f, 10.f);
+        cam.lookat            = point3(0.f, 0.f, 0.f);
+        cam.vup               = vec3(0.f, 1.f, 0.f);
+        cam.defocus_angle     = 0.6f;
+        cam.focus_dist        = 10.f;
+        cam.background        = color(0.7f, 0.8f, 1.0f);
     }
 
     cam.image_width       = img_width;
@@ -73,7 +82,13 @@ int main(int argc, char** argv) {
     DeviceScene scene;
     if (scene_name == "cornell") {
         scene = build_device_cornell_box();
-    } else {
+    } else if (scene_name == "simple") {
+        scene = build_device_simple_scene();
+    } else if (scene_name == "medium") {
+        scene = build_device_medium_scene();
+    } else if (scene_name == "complex") {
+        scene = build_device_complex_scene();
+    }  else {
         scene = build_device_random_spheres();
     }
 
