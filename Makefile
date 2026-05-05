@@ -23,6 +23,7 @@ OMPFLAGS  = $(CXXFLAGS) -fopenmp
 NVCCFLAGS = -O3 -std=c++17 -Iinclude -rdc=true --generate-code arch=compute_86,code=sm_86
 
 LDCUDA    = -lcurand
+LDGL      = -lglfw -lGL
 
 BINDIR    = bin
 OUTDIR    = output
@@ -30,15 +31,20 @@ OUTDIR    = output
 # Source files
 SERIAL_SRC   = src/serial/main.cpp
 OPENMP_SRC   = src/openmp/main.cpp
-CUDA_SRCS    = src/cuda/main.cu \
-               src/cuda/render.cu \
-               src/cuda/device_scene.cu
+CUDA_SRCS     = src/cuda/main.cu \
+                src/cuda/render.cu \
+                src/cuda/device_scene.cu
+REALTIME_SRCS = src/cuda/main_realtime.cu \
+                src/cuda/render.cu \
+                src/cuda/device_scene.cu
+DIST_SRCS_COMMON = src/cuda/render.cu src/cuda/device_scene.cu
+DIST_FLAGS       = $(NVCCFLAGS) -Isrc/distributed -Isrc/cuda
 
 # Headers (used as dependencies)
 HEADERS = $(wildcard include/*.h) $(wildcard scenes/*.h) \
           src/cuda/render.cuh src/cuda/device_scene.cuh
 
-.PHONY: all serial openmp cuda clean
+.PHONY: all serial openmp cuda realtime serial-realtime openmp-realtime worker master-realtime clean
 
 all: serial openmp cuda
 
@@ -60,6 +66,36 @@ $(BINDIR)/cuda_rt: $(CUDA_SRCS) $(HEADERS)
 	$(NVCC) $(NVCCFLAGS) $(LDCUDA) -o $@ $(CUDA_SRCS)
 	@echo "Built: $@"
 
+serial-realtime: $(BINDIR)/serial_realtime_rt
+$(BINDIR)/serial_realtime_rt: src/serial/main_realtime.cpp $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(CXXFLAGS) -lglfw -lGL -o $@ src/serial/main_realtime.cpp
+	@echo "Built: $@"
+
+openmp-realtime: $(BINDIR)/openmp_realtime_rt
+$(BINDIR)/openmp_realtime_rt: src/openmp/main_realtime.cpp $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(OMPFLAGS) -lglfw -lGL -o $@ src/openmp/main_realtime.cpp
+	@echo "Built: $@"
+
+realtime: $(BINDIR)/realtime_rt
+$(BINDIR)/realtime_rt: $(REALTIME_SRCS) $(HEADERS)
+	@mkdir -p $(BINDIR) $(OUTDIR)
+	$(NVCC) $(NVCCFLAGS) $(LDCUDA) $(LDGL) -o $@ $(REALTIME_SRCS)
+	@echo "Built: $@"
+
+worker: $(BINDIR)/worker_rt
+$(BINDIR)/worker_rt: src/distributed/worker.cu $(DIST_SRCS_COMMON) $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(NVCC) $(DIST_FLAGS) $(LDCUDA) -o $@ src/distributed/worker.cu $(DIST_SRCS_COMMON)
+	@echo "Built: $@"
+
+master-realtime: $(BINDIR)/master_realtime_rt
+$(BINDIR)/master_realtime_rt: src/distributed/master_realtime.cu $(DIST_SRCS_COMMON) $(HEADERS)
+	@mkdir -p $(BINDIR)
+	$(NVCC) $(DIST_FLAGS) $(LDCUDA) $(LDGL) -o $@ src/distributed/master_realtime.cu $(DIST_SRCS_COMMON)
+	@echo "Built: $@"
+
 clean:
 	rm -rf $(BINDIR)
 
@@ -75,8 +111,10 @@ test-openmp: openmp
 	@echo "Output: $(OUTDIR)/test_openmp.ppm"
 
 test-cuda: cuda
-	./scripts/run_with_metrics.sh ./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 500 --depth 10 \
-	                    --output $(OUTDIR)/test_cuda.ppm
+	./scripts/run_with_metrics.sh ./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 500 --depth 10 
+
+test-cuda-rt:
+	./$(BINDIR)/cuda_rt --scene random --width 1920 --spp 10 --depth 3 --output $(OUTDIR)/test_cuda.ppm
 	@echo "Output: $(OUTDIR)/test_cuda.ppm"
 
 test-all: test-serial test-openmp test-cuda

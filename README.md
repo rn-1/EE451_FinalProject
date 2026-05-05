@@ -1,5 +1,10 @@
 # EE451 — CUDA-Accelerated Ray Tracing Engine
 
+
+# Distributed map reduce
+
+$ ./bin/master_realtime_rt --worker-ip 100.116.134.88 --worker-port 9000 --scene random --width 640 --spp 4 --depth 4 2>&1
+
 Team: Julia Wang, Sahil Pandit, Akul Jindal, Abhishek Kakolla, Ryan Nene
 
 A ray tracing engine implemented in three progressively parallelized versions:
