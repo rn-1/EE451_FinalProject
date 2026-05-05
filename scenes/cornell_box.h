@@ -20,7 +20,7 @@ inline std::shared_ptr<HittableList> make_cornell_box_scene(
     auto red   = std::make_shared<Lambertian>(color(0.65f, 0.05f, 0.05f));
     auto white = std::make_shared<Lambertian>(color(0.73f, 0.73f, 0.73f));
     auto green = std::make_shared<Lambertian>(color(0.12f, 0.45f, 0.15f));
-    auto metal_wall = std::make_shared<Metal>(color(0.5f, 0.5f, 0.5f), 0.f);
+    auto metal_wall = std::make_shared<Metal>(color(0.75f, 0.75f, 0.75f), 0.f);
     auto light = std::make_shared<DiffuseLight>(color(15.f, 15.f, 15.f));
     mats.insert(mats.end(), {red, white, green, light});
 
