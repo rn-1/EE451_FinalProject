@@ -4,6 +4,7 @@
 // Defaults: 640x360, 1 spp, 3 depth.  ESC or close to quit.
 
 #include <GLFW/glfw3.h>
+#include <complex.h>
 #include <omp.h>
 #include <chrono>
 #include <cmath>
@@ -38,6 +39,8 @@ int main(int argc, char** argv) {
     std::shared_ptr<HittableList> world;
     if (scene_name == "cornell")
         world = make_cornell_box_scene(cam, mats);
+    else if (scene_name == "complex")
+        world = make_complex_scene(cam, mats);
     else
         world = make_random_spheres_scene(cam, mats);
 

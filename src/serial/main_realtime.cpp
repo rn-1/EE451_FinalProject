@@ -6,6 +6,7 @@
 #include <GLFW/glfw3.h>
 #include <chrono>
 #include <cmath>
+#include <complex.h>
 #include <cstdio>
 #include <memory>
 #include <random>
@@ -24,6 +25,7 @@
 #include "../../include/camera.h"
 #include "../../scenes/random_spheres.h"
 #include "../../scenes/cornell_box.h"
+#include "../../scenes/complex.h"
 
 int main(int argc, char** argv) {
     std::string scene_name = get_arg(argc, argv, "--scene", "random");
@@ -37,6 +39,8 @@ int main(int argc, char** argv) {
     std::shared_ptr<HittableList> world;
     if (scene_name == "cornell")
         world = make_cornell_box_scene(cam, mats);
+    else if (scene_name == "complex")
+        world = make_complex_scene(cam, mats);
     else
         world = make_random_spheres_scene(cam, mats);
 
