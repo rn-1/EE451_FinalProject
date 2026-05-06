@@ -46,7 +46,7 @@ HEADERS = $(wildcard include/*.h) $(wildcard scenes/*.h) \
 
 .PHONY: all serial openmp cuda realtime serial-realtime openmp-realtime worker master-realtime clean
 
-all: serial openmp cuda
+all: serial openmp cuda realtime worker
 
 serial: $(BINDIR)/serial_rt
 $(BINDIR)/serial_rt: $(SERIAL_SRC) $(HEADERS)
